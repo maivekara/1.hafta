@@ -19,7 +19,7 @@ jobs:
       run: docker build --no-cache -t yourdockerhubusername/yourimagename:latest .
 
     - name: Login to Docker Hub
-      run: echo "${{ secrets.DOCKER_TOKEN }}" | docker login -u "yourdockerhubusername" --password-stdin
+      run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "yourdockerhubusername" --password-stdin
 
     - name: Push Docker image
       run: docker push yourdockerhubusername/yourimagename:latest
