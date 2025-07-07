@@ -1,25 +1,29 @@
-name: Docker Build and Deploy
+name: Docker Build and Push
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Run tests
-      run: echo "Testler burada çalışacak"
+      - name: Run tests (örnek)
+        run: echo "Testler burada çalışacak"
 
-    - name: Build Docker image with no cache
-      run: docker build --no-cache -t yourdockerhubusername/yourimagename:latest .
+      - name: Build Docker image with no cache
+        run: docker build --no-cache -t ozturk/1.haftaslack:latest .
 
-    - name: Login to Docker Hub
-      run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "yourdockerhubusername" --password-stdin
+      - name: Login to Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "ozturk" --password-stdin
 
-    - name: Push Docker image
-      run: docker push yourdockerhubusername/yourimagename:latest
+      - name: Push Docker image to Docker Hub
+        run: docker push ozturk/1.haftaslack:latest
+
