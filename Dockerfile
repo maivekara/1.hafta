@@ -4,4 +4,4 @@ WORKDIR /app
 
 COPY . .
 
-CMDX ["python", "app.py"]
+CMD ["python", "app.py"]
