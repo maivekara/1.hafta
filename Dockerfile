@@ -4,4 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-CMD ["python", "app.py"]
+RUN pip install -r requirements.txt  # varsa bağımlılıkların
+
+CMD ["pytest"]  # veya "python", "-m", "unittest", "-v" ya da test komutun neyse
+
