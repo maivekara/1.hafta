@@ -8,17 +8,17 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ozturk25/1.haftaslack # <--- Güncellendi!
+  IMAGE_NAME: ozturk25/1.haftaslack # <--- Güncellendi: Docker Hub kullanıcı adınız/imaj adınız
   AWS_REGION: eu-central-1
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
-      security-events: write
-      id-token: write
+      contents: read # Kodu çekmek için
+      packages: write # Docker Hub'a push yapmak için
+      security-events: write # Trivy SARIF raporunu yüklemek için
+      id-token: write # AWS kimlik doğrulaması için OIDC kullanılıyorsa
 
     steps:
       - name: Kodu Çıkart
@@ -30,6 +30,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+          # Eğer OIDC kullanıyorsanız (daha güvenli), yukarıdaki satırları yorumlayıp aşağıdaki rolü kullanın:
+          # role-to-assume: arn:aws:iam::[SİZİN_AWS_ACCOUNT_ID'NİZ]:role/YOUR_GITHUB_ACTIONS_ROLE_NAME
+          # duration-seconds: 900
 
       - name: Docker Buildx Kurulumu
         uses: docker/setup-buildx-action@v3
@@ -58,10 +61,13 @@ jobs:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'sarif'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-results.sarif'
+          output: 'trivy-results.sarif' # <-- Trivy çıktısı bu dosyaya yazılacak
 
       - name: Trivy Sonuçlarını Yükle (SARIF)
         uses: github/codeql-action/upload-sarif@v3
+        with:
+          # Trivy çıktısının mutlak yolunu belirtiyoruz
+          sarif_file: '${{ github.workspace }}/trivy-results.sarif' # <--- Düzeltildi!
 
       - name: Docker Hub'a Giriş Yap
         uses: docker/login-action@v3
@@ -78,15 +84,15 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: payment-service # <-- task-definition.json'daki "name" alanı
-          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # <-- Tam imaj yolu (kullanıcı_adı/imaj_adı:sha)
-          service: payment-service # <-- AWS ECS'deki servis adı (kontrol edin)
+          container-name: payment-service # task-definition.json'daki konteynerin "name" alanı
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # Konteynerin atanacak TAM imaj yolu
+          service: payment-service # AWS ECS'deki servis adı (ECS konsolundan kontrol edin)
           cluster: payment-cluster
           wait-for-service-stability: true
 
       - name: Slack Bildirimi
         uses: slackapi/slack-github-action@v1.24.0
-        if: success() || failure()
+        if: success() || failure() # İş akışı başarılı olsa da başarısız olsa da bildirim gönder
         with:
           payload: |
             {
