@@ -1,0 +1,23 @@
+{
+  "name": "slackurl_webhook",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maivekara/SlackUrl_Webhook.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/maivekara/SlackUrl_Webhook/issues"
+  },
+  "homepage": "https://github.com/maivekara/SlackUrl_Webhook#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
