@@ -8,7 +8,7 @@ on:
   workflow_dispatch: # Manuel çalıştırmaya izin verir
 
 env:
-  IMAGE_NAME: ozturk25/payment-service # Docker Hub kullanıcı adınız/imaj adınız (örn: your-dockerhub-username/your-repo-name)
+  IMAGE_NAME: ozturk25/payment-service # Docker Hub kullanıcı adınız/imaj adınız
   AWS_REGION: eu-central-1
 
 jobs:
@@ -18,66 +18,58 @@ jobs:
       contents: read # Kodu çekmek için
       packages: write # Docker Hub'a push yapmak için
       security-events: write # Trivy SARIF raporunu yüklemek için
-      id-token: write # AWS kimlik doğrulaması için OIDC kullanılıyorsa
+      id-token: write # AWS kimlik doğrulaması için OIDC kullanılıyorsa (eğer kullanıyorsanız)
 
     steps:
       - name: Kodu Çıkart
         uses: actions/checkout@v4
 
       - name: AWS Kimlik Bilgilerini Yapılandır
-        uses: aws-actions/configure-aws-credentials@v4 # OIDC ile AWS'ye kimlik doğrulaması için
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-          # Eğer OIDC kullanıyorsanız, yukarıdaki iki secret yerine aşağıdaki satırları kullanın:
-          # role-to-assume: arn:aws:iam::ACCOUNT_ID:role/YOUR_GITHUB_ACTIONS_ROLE
-          # duration-seconds: 900 # (Opsiyonel) Rolün varsayılan süresi (900 saniye = 15 dakika)
+          # Eğer OIDC kullanıyorsanız (daha güvenli), yukarıdaki satırları yorumlayıp aşağıdaki rolü kullanın:
+          # role-to-assume: arn:aws:iam::[SİZİN_AWS_ACCOUNT_ID'NİZ]:role/YOUR_GITHUB_ACTIONS_ROLE_NAME # <-- Bu rolü kendi IAM rolünüzle değiştirin
+          # duration-seconds: 900 # Rol oturumunun süresi (isteğe bağlı)
 
       - name: Docker Buildx Kurulumu
-        uses: docker/setup-buildx-action@v3 # En son sürüm
+        uses: docker/setup-buildx-action@v3
 
       - name: Docker İmajını Oluştur ve Yükle
-        uses: docker/build-push-action@v5 # En son sürüm
+        uses: docker/build-push-action@v5
         with:
-          context: . # Dockerfile'ın bulunduğu dizin
-          push: false # Şimdilik Docker Hub'a göndermiyoruz, sadece yerel olarak yüklüyoruz
-          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }},${{ env.IMAGE_NAME }}:latest # İmajı SHA ve latest ile etiketle
-          load: true # <-- Burası kritik! İmajı çalıştırıcının Docker daemon'ına yükler
+          context: .
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }},${{ env.IMAGE_NAME }}:latest
+          load: true
 
       - name: Testleri Çalıştır
         run: |
-          # 'tests' dizininin varlığını kontrol et
           if [ -d "tests" ]; then
             echo "Tests dizini bulundu. Testler çalıştırılıyor..."
-            # Testleri Docker konteyneri içinde çalıştır
-            # python -m pytest komutunun bulunduğu bir entrypoint veya komut kullanın
             docker run --rm ${{ env.IMAGE_NAME }}:${{ github.sha }} python -m pytest tests/
           else
             echo "Tests dizini bulunamadı, testler atlanıyor."
-            exit 0 # Test dizini yoksa adımı başarılı olarak tamamla
+            exit 0
           fi
 
       - name: Trivy Güvenlik Taraması
         uses: aquasecurity/trivy-action@0.14.0
         with:
-          # İmaj referansını doğrudan ortam değişkenlerinden alıyoruz
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }} # <--- Burası artık doğru çalışmalı
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'sarif'
           severity: 'CRITICAL,HIGH'
           output: 'trivy-results.sarif'
-          # İsteğe bağlı diğer ayarlar:
-          # vuln-type: 'os,library'
-          # ignore-unfixed: true
-          # exit-code: '1' # Zafiyet bulunursa aksiyonu başarısız yapar
 
       - name: Trivy Sonuçlarını Yükle (SARIF)
-        uses: github/codeql-action/upload-sarif@v3 # En son sürüm
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Docker Hub'a Giriş Yap
-        uses: docker/login-action@v3 # En son sürüm
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -87,21 +79,35 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-      - name: ECS'ye Dağıt
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      # --- ECS DAĞITIMININ YENİ BÖLÜMÜ BAŞLANGICI ---
+      - name: ECS Görev Tanımını Kaydet
+        id: register-task-definition # Bu adıma bir ID veriyoruz
+        uses: aws-actions/amazon-ecs-register-task-definition@v1 # Yeni aksiyon: Görev tanımı kaydetme
         with:
-          # Projenizin kök dizinindeki task-definition.json dosyasını belirtiyoruz
-          task-definition: task-definition.json
-          # Task tanımında kullanılacak Docker imajını belirtiyoruz.
-          # Aksiyon, task-definition.json içindeki <IMAGE_NAME> yer tutucusunu bu değerle değiştirecek.
-          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # <--- Bu satır kritik!
-          service: payment-service
-          cluster: payment-cluster
-          wait-for-service-stability: true
+          task-definition: task-definition.json # Kök dizindeki task-definition.json dosyamız
+          # Görev tanımındaki "image" alanını dinamik olarak güncellemek için
+          # "container-name" ve "image" parametreleri kullanılır.
+          # "container-name" task-definition.json içindeki "name" alanı ile eşleşmeli
+          container-name: payment-service
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # Dağıtılacak gerçek imaj
+          # Eğer task-definition.json dosyanızda başka yer tutucularınız varsa (örn. "log-group" gibi),
+          # onları da burada "log-group: /ecs/my-app" gibi belirtebilirsiniz.
+
+      - name: ECS Servisini Güncelle
+        uses: aws-actions/amazon-ecs-deploy-service@v1 # Yeni aksiyon: Servisi güncelleme
+        with:
+          service: payment-service # Güncellenecek ECS Servisi
+          cluster: payment-cluster # Servisin bulunduğu ECS Kümesi
+          # Önceki adımda kaydedilen görev tanımının ARN'ini kullanıyoruz
+          task-definition: ${{ steps.register-task-definition.outputs.task-definition-arn }}
+          # İsteğe bağlı: Yeni bir dağıtım yapmaya zorla (Eğer servis güncellenmediyse bile)
+          # force-new-deployment: true
+
+      # --- ECS DAĞITIMININ YENİ BÖLÜMÜ SONU ---
 
       - name: Slack Bildirimi
-        uses: slackapi/slack-github-action@v1.24.0 # En son sürüm
-        if: success() || failure() # Her durumda (başarılı veya başarısız) bildirim gönder
+        uses: slackapi/slack-github-action@v1.24.0
+        if: success() || failure()
         with:
           payload: |
             {

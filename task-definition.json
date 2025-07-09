@@ -1,7 +1,7 @@
 [
   {
-    "name": "payment-service",
-    "image": "<IMAGE_NAME>", # <-- Burası kritik! Buraya imaj adınızı yazıyoruz, aksiyon bunu değiştirecek.
+    "name": "payment-service", # Servis adınızla eşleşmeli
+    "image": "<PLACEHOLDER_IMAGE>", # <-- BURASI ÇOK ÖNEMLİ: Bu bir yer tutucudur!
     "cpu": 256,
     "memory": 512,
     "portMappings": [
@@ -15,8 +15,8 @@
     "logConfiguration": {
       "logDriver": "awslogs",
       "options": {
-        "awslogs-group": "/ecs/payment-cluster",
-        "awslogs-region": "eu-central-1",
+        "awslogs-group": "/ecs/payment-cluster", # CloudWatch Logs grubunuz
+        "awslogs-region": "eu-central-1", # AWS_REGION ile eşleşmeli
         "awslogs-stream-prefix": "ecs"
       }
     }
