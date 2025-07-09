@@ -1,0 +1,3 @@
+# requirements-dev.txt
+-r requirements.txt  # Temel bağımlılıkları dahil et
+pytest==7.4.0        # Test için gerekli

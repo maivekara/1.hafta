@@ -1,7 +1,6 @@
-# Python ve Node.js'i bir arada içeren resmi imaj
 FROM python:3.9-slim
 
-# Node.js kurulumu (LTS sürümü)
+# Node.js kurulumu (sadece ihtiyacınız varsa)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl ca-certificates gnupg && \
@@ -11,23 +10,21 @@ RUN apt-get update && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Çalışma dizini
 WORKDIR /app
 
-# Önce Python bağımlılıkları
+# Sadece PROD bağımlılıkları (requirements.txt)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Sonra Node.js bağımlılıkları
+# Node.js bağımlılıkları (sadece ihtiyacınız varsa)
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
 # Uygulama kodunu kopyala
 COPY . .
 
-# HANGİSİNİ KULLANIYORSANIZ:
-# Eğer Python uygulaması ise:
+# Uygulamayı çalıştır (Python için)
 CMD ["python", "app.py"]
 
-# Eğer Node.js uygulaması ise:
+# Veya Node.js için:
 # CMD ["npm", "start"]
