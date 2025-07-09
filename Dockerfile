@@ -12,19 +12,18 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Sadece PROD bağımlılıkları (requirements.txt)
+# Production bağımlılıkları
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Node.js bağımlılıkları (sadece ihtiyacınız varsa)
+# Test bağımlılıkları (pytest) - CI için
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# Node.js bağımlılıkları
 COPY package.json package-lock.json ./
 RUN npm ci --only=production
 
-# Uygulama kodunu kopyala
 COPY . .
 
-# Uygulamayı çalıştır (Python için)
 CMD ["python", "app.py"]
-
-# Veya Node.js için:
-# CMD ["npm", "start"]
