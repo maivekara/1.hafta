@@ -1,10 +1,8 @@
-FROM node:18
+FROM python:3.9-slim
 
 WORKDIR /app
 
 COPY . .
 
-RUN npm install
-
-CMD ["npm", "test"]
+CMD ["python", "app.py"]
 
