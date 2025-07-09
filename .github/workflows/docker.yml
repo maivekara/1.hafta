@@ -2,50 +2,77 @@ name: Finans Payment Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ozturk25/payment-service
+  AWS_REGION: eu-central-1
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Run unit tests
-        run: |
-          docker run ozturk25/1.haftaslack:latest npm test  # Örnek test komutu
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
       - name: Build Docker image
-        run: docker build --no-cache -t ozturk25/payment-service:latest .
+        run: |
+          docker build --no-cache -t $IMAGE_NAME:$GITHUB_SHA .
+          docker tag $IMAGE_NAME:$GITHUB_SHA $IMAGE_NAME:latest
 
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@master
+      - name: Run tests
+        run: |
+          docker run --rm $IMAGE_NAME:$GITHUB_SHA python -m pytest
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.14.0
         with:
-          image-ref: 'ozturk25/payment-service:latest'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
+          image-ref: $IMAGE_NAME:$GITHUB_SHA
+          format: 'sarif'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
 
       - name: Login to Docker Hub
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: echo "$DOCKERHUB_TOKEN" | docker login -u "ozturk25" --password-stdin
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push Docker image
-        run: docker push ozturk25/payment-service:latest
-
-      - name: Deploy to AWS ECS
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Push to Docker Hub
         run: |
-          aws ecs update-service --cluster payment-cluster --service payment-service --task-definition my-app --force-new-deployment
+          docker push $IMAGE_NAME:$GITHUB_SHA
+          docker push $IMAGE_NAME:latest
 
-      - name: Send Slack Notification
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          service: payment-service
+          cluster: payment-cluster
+          wait-for-service-stability: true
+
+      - name: Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "Deploy başarılı: $IMAGE_NAME:$GITHUB_SHA",
+              "blocks": [{
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "✅ *Deploy Tamamlandı* \n*Image:* `$IMAGE_NAME:$GITHUB_SHA`"
+                }
+              }]
+            }
         env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Ödeme servisi başarıyla deploy edildi!"}' "$SLACK_WEBHOOK"
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
