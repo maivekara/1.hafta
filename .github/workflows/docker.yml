@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ozturk25/1.haftaslack # <--- Güncellendi: Docker Hub kullanıcı adınız/imaj adınız
-  AWS_REGION: eu-central-1
+  IMAGE_NAME: ozturk25/1.haftaslack # Docker Hub kullanıcı adınız/imaj adınız
+  # AWS_REGION: eu-central-1 # AWS kullanmayacağımız için buna gerek kalmadı
 
 jobs:
   build-test-deploy:
@@ -18,21 +18,13 @@ jobs:
       contents: read # Kodu çekmek için
       packages: write # Docker Hub'a push yapmak için
       security-events: write # Trivy SARIF raporunu yüklemek için
-      id-token: write # AWS kimlik doğrulaması için OIDC kullanılıyorsa
+      # id-token: write # AWS kullanmayacağımız için gerek kalmadı
 
     steps:
       - name: Kodu Çıkart
         uses: actions/checkout@v4
 
-      - name: AWS Kimlik Bilgilerini Yapılandır
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-          # Eğer OIDC kullanıyorsanız (daha güvenli), yukarıdaki satırları yorumlayıp aşağıdaki rolü kullanın:
-          # role-to-assume: arn:aws:iam::[SİZİN_AWS_ACCOUNT_ID'NİZ]:role/YOUR_GITHUB_ACTIONS_ROLE_NAME
-          # duration-seconds: 900
+      # AWS Kimlik Bilgilerini Yapılandırma adımı kaldırıldı
 
       - name: Docker Buildx Kurulumu
         uses: docker/setup-buildx-action@v3
@@ -61,13 +53,12 @@ jobs:
           image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           format: 'sarif'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-results.sarif' # <-- Trivy çıktısı bu dosyaya yazılacak
+          output: 'trivy-results.sarif'
 
       - name: Trivy Sonuçlarını Yükle (SARIF)
         uses: github/codeql-action/upload-sarif@v3
         with:
-          # Trivy çıktısının mutlak yolunu belirtiyoruz
-          sarif_file: '${{ github.workspace }}/trivy-results.sarif' # <--- Düzeltildi!
+          sarif_file: '${{ github.workspace }}/trivy-results.sarif'
 
       - name: Docker Hub'a Giriş Yap
         uses: docker/login-action@v3
@@ -80,28 +71,20 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-      - name: ECS'ye Dağıt
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: payment-service # task-definition.json'daki konteynerin "name" alanı
-          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # Konteynerin atanacak TAM imaj yolu
-          service: payment-service # AWS ECS'deki servis adı (ECS konsolundan kontrol edin)
-          cluster: payment-cluster
-          wait-for-service-stability: true
+      # ECS Dağıtım adımları (Görev Tanımı Oluştur ve Kaydet, ECS Servisini Güncelle) kaldırıldı
 
       - name: Slack Bildirimi
         uses: slackapi/slack-github-action@v1.24.0
-        if: success() || failure() # İş akışı başarılı olsa da başarısız olsa da bildirim gönder
+        if: success() || failure()
         with:
           payload: |
             {
-              "text": "${{ job.status == 'success' && '✅ Deploy Başarılı' || '❌ Deploy Başarısız' }}: ${{ env.IMAGE_NAME }}:${{ github.sha }}",
+              "text": "${{ job.status == 'success' && '✅ Build/Test Başarılı' || '❌ Build/Test Başarısız' }}: ${{ env.IMAGE_NAME }}:${{ github.sha }}",
               "blocks": [{
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "${{ job.status == 'success' && '✅ *Deploy Tamamlandı*' || '❌ *Deploy Başarısız Oldu*' }} \n*Image:* `${{ env.IMAGE_NAME }}:${{ github.sha }}` \n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.workflow }}>"
+                  "text": "${{ job.status == 'success' && '✅ *Build/Test Tamamlandı*' || '❌ *Build/Test Başarısız Oldu*' }} \n*Image:* `${{ env.IMAGE_NAME }}:${{ github.sha }}` \n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.workflow }}>"
                 }
               }]
             }
