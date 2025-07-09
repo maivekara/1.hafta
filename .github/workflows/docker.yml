@@ -3,59 +3,78 @@ name: Finans Payment Pipeline
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+  workflow_dispatch: # Manuel çalıştırmaya izin verir
 
 env:
-  IMAGE_NAME: ozturk25/payment-service
+  IMAGE_NAME: ozturk25/payment-service # Docker Hub kullanıcı adınız/imaj adınız
   AWS_REGION: eu-central-1
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
+    permissions: # Gerekli izinler
+      contents: read
+      packages: write # Docker Hub'a push yapmak için
+      security-events: write # Trivy SARIF raporunu yüklemek için
+
     steps:
-      - name: Checkout
+      - name: Kodu Çıkart
         uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
+      - name: Docker Buildx Kurulumu
+        uses: docker/setup-buildx-action@v3 # v2 yerine v3 kullanmak daha iyi
 
-      - name: Build Docker image
+      - name: Docker İmajını Oluştur ve Yükle
+        uses: docker/build-push-action@v5 # Bu aksiyonu kullanıyoruz
+        with:
+          context: . # Dockerfile'ın bulunduğu dizin
+          push: false # Şimdilik Docker Hub'a göndermiyoruz, sadece yerel olarak yüklüyoruz
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }},${{ env.IMAGE_NAME }}:latest
+          load: true # <-- Burası çok önemli! İmajı çalıştırıcının Docker daemon'ına yükler
+
+      - name: Testleri Çalıştır
         run: |
-          docker build --no-cache -t $IMAGE_NAME:$GITHUB_SHA .
-          docker tag $IMAGE_NAME:$GITHUB_SHA $IMAGE_NAME:latest
+          # 'tests' dizininin varlığını kontrol et
+          if [ -d "tests" ]; then
+            echo "Tests dizini bulundu. Testler çalıştırılıyor..."
+            # Testleri Docker konteyneri içinde çalıştır
+            # pytest komutunun bulunduğu bir entrypoint veya komut kullanın
+            docker run --rm ${{ env.IMAGE_NAME }}:${{ github.sha }} python -m pytest tests/
+          else
+            echo "Tests dizini bulunamadı, testler atlanıyor."
+            exit 0 # Test dizini yoksa adımı başarılı olarak tamamla
+          fi
 
-      - name: Run tests
-        run: |
-          # Testler yoksa bile başarılı olacak şekilde
-          docker run --rm $IMAGE_NAME:$GITHUB_SHA python -m pytest tests/ || echo "Testler çalıştırıldı"
-          # Veya alternatif olarak:
-          # docker run --rm $IMAGE_NAME:$GITHUB_SHA sh -c "if [ -d 'tests' ]; then pytest; else echo 'Test bulunamadı'; fi"
-
-      - name: Trivy vulnerability scan
+      - name: Trivy Güvenlik Taraması
         uses: aquasecurity/trivy-action@0.14.0
         with:
-          image-ref: $IMAGE_NAME:$GITHUB_SHA
+          # İmaj referansını doğrudan ortam değişkenlerinden alıyoruz
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }} # <-- Burası artık doğru çalışmalı
           format: 'sarif'
           severity: 'CRITICAL,HIGH'
           output: 'trivy-results.sarif'
+          # Diğer Trivy ayarları (isteğe bağlı):
+          # vuln-type: 'os,library' # Varsayılan olarak os,library'dir
+          # ignore-unfixed: true # Düzeltmesi olmayan zafiyetleri göz ardı eder
+          # exit-code: '1' # Zafiyet bulunursa aksiyonu başarısız yapar
 
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v2
+      - name: Trivy Sonuçlarını Yükle (SARIF)
+        uses: github/codeql-action/upload-sarif@v3 # v2 yerine v3 kullanmak daha iyi
         with:
           sarif_file: 'trivy-results.sarif'
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
+      - name: Docker Hub'a Giriş Yap
+        uses: docker/login-action@v3 # v2 yerine v3 kullanmak daha iyi
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push to Docker Hub
+      - name: Docker Hub'a Gönder
         run: |
-          docker push $IMAGE_NAME:$GITHUB_SHA
-          docker push $IMAGE_NAME:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
 
-      - name: Deploy to ECS
+      - name: ECS'ye Dağıt
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: task-definition.json
@@ -63,17 +82,17 @@ jobs:
           cluster: payment-cluster
           wait-for-service-stability: true
 
-      - name: Slack Notification
+      - name: Slack Bildirimi
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
             {
-              "text": "Deploy başarılı: $IMAGE_NAME:$GITHUB_SHA",
+              "text": "Deploy başarılı: ${{ env.IMAGE_NAME }}:${{ github.sha }}",
               "blocks": [{
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": "✅ *Deploy Tamamlandı* \n*Image:* `$IMAGE_NAME:$GITHUB_SHA`"
+                  "text": "✅ *Deploy Tamamlandı* \n*Image:* `${{ env.IMAGE_NAME }}:${{ github.sha }}`"
                 }
               }]
             }
