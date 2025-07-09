@@ -3,22 +3,22 @@ name: Finans Payment Pipeline
 on:
   push:
     branches: [main]
-  pull_request: # PR'lar için de çalışsın
+  pull_request:
     branches: [main]
-  workflow_dispatch: # Manuel çalıştırmaya izin verir
+  workflow_dispatch:
 
 env:
-  IMAGE_NAME: ozturk25/payment-service # Docker Hub kullanıcı adınız/imaj adınız
+  IMAGE_NAME: ozturk25/payment-service
   AWS_REGION: eu-central-1
 
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
-    permissions: # Gerekli izinler
-      contents: read # Kodu çekmek için
-      packages: write # Docker Hub'a push yapmak için
-      security-events: write # Trivy SARIF raporunu yüklemek için
-      id-token: write # AWS kimlik doğrulaması için OIDC kullanılıyorsa (eğer kullanıyorsanız)
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
 
     steps:
       - name: Kodu Çıkart
@@ -26,13 +26,6 @@ jobs:
 
       - name: AWS Kimlik Bilgilerini Yapılandır
         uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-          # Eğer OIDC kullanıyorsanız (daha güvenli), yukarıdaki satırları yorumlayıp aşağıdaki rolü kullanın:
-          # role-to-assume: arn:aws:iam::[SİZİN_AWS_ACCOUNT_ID'NİZ]:role/YOUR_GITHUB_ACTIONS_ROLE_NAME # <-- Bu rolü kendi IAM rolünüzle değiştirin
-          # duration-seconds: 900 # Rol oturumunun süresi (isteğe bağlı)
 
       - name: Docker Buildx Kurulumu
         uses: docker/setup-buildx-action@v3
@@ -65,8 +58,6 @@ jobs:
 
       - name: Trivy Sonuçlarını Yükle (SARIF)
         uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results.sarif'
 
       - name: Docker Hub'a Giriş Yap
         uses: docker/login-action@v3
@@ -81,28 +72,19 @@ jobs:
 
       # --- ECS DAĞITIMININ YENİ BÖLÜMÜ BAŞLANGICI ---
       - name: ECS Görev Tanımını Kaydet
-        id: register-task-definition # Bu adıma bir ID veriyoruz
-        uses: aws-actions/amazon-ecs-register-task-definition@v1 # Yeni aksiyon: Görev tanımı kaydetme
+        id: register-task-definition
+        uses: aws-actions/amazon-ecs-register-task-definition@main # <-- Versiyonu main olarak değiştirildi
         with:
-          task-definition: task-definition.json # Kök dizindeki task-definition.json dosyamız
-          # Görev tanımındaki "image" alanını dinamik olarak güncellemek için
-          # "container-name" ve "image" parametreleri kullanılır.
-          # "container-name" task-definition.json içindeki "name" alanı ile eşleşmeli
+          task-definition: task-definition.json
           container-name: payment-service
-          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # Dağıtılacak gerçek imaj
-          # Eğer task-definition.json dosyanızda başka yer tutucularınız varsa (örn. "log-group" gibi),
-          # onları da burada "log-group: /ecs/my-app" gibi belirtebilirsiniz.
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: ECS Servisini Güncelle
-        uses: aws-actions/amazon-ecs-deploy-service@v1 # Yeni aksiyon: Servisi güncelleme
+        uses: aws-actions/amazon-ecs-deploy-service@main # <-- Versiyonu main olarak değiştirildi
         with:
-          service: payment-service # Güncellenecek ECS Servisi
-          cluster: payment-cluster # Servisin bulunduğu ECS Kümesi
-          # Önceki adımda kaydedilen görev tanımının ARN'ini kullanıyoruz
+          service: payment-service
+          cluster: payment-cluster
           task-definition: ${{ steps.register-task-definition.outputs.task-definition-arn }}
-          # İsteğe bağlı: Yeni bir dağıtım yapmaya zorla (Eğer servis güncellenmediyse bile)
-          # force-new-deployment: true
-
       # --- ECS DAĞITIMININ YENİ BÖLÜMÜ SONU ---
 
       - name: Slack Bildirimi
