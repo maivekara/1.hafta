@@ -1,8 +1,10 @@
-FROM python:3.9-slim
+FROM node:18
 
 WORKDIR /app
 
 COPY . .
 
-CMD ["pytest"]  # veya "python", "-m", "unittest", "-v" ya da test komutun neyse
+RUN npm install
+
+CMD ["npm", "test"]
 
