@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ozturk25/payment-service
+  IMAGE_NAME: ozturk25/1.haftaslack # <--- Güncellendi!
   AWS_REGION: eu-central-1
 
 jobs:
@@ -26,6 +26,10 @@ jobs:
 
       - name: AWS Kimlik Bilgilerini Yapılandır
         uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Docker Buildx Kurulumu
         uses: docker/setup-buildx-action@v3
@@ -70,22 +74,15 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-      # --- ECS DAĞITIMININ YENİ BÖLÜMÜ BAŞLANGICI ---
-      - name: ECS Görev Tanımını Kaydet
-        id: register-task-definition
-        uses: aws-actions/amazon-ecs-register-task-definition@main # <-- Versiyonu main olarak değiştirildi
+      - name: ECS'ye Dağıt
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: payment-service
-          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: ECS Servisini Güncelle
-        uses: aws-actions/amazon-ecs-deploy-service@main # <-- Versiyonu main olarak değiştirildi
-        with:
-          service: payment-service
+          container-name: payment-service # <-- task-definition.json'daki "name" alanı
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }} # <-- Tam imaj yolu (kullanıcı_adı/imaj_adı:sha)
+          service: payment-service # <-- AWS ECS'deki servis adı (kontrol edin)
           cluster: payment-cluster
-          task-definition: ${{ steps.register-task-definition.outputs.task-definition-arn }}
-      # --- ECS DAĞITIMININ YENİ BÖLÜMÜ SONU ---
+          wait-for-service-stability: true
 
       - name: Slack Bildirimi
         uses: slackapi/slack-github-action@v1.24.0
